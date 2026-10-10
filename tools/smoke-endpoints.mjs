@@ -118,9 +118,17 @@ const expect = (label, cond, extra = '') => {
 console.log('\n=== GET /dev-task/status ===')
 const status = await callRoute(ctx.routes.get('/dev-task/status'), { url: '/dev-task/status' })
 expect('status 200', status.status === 200, `revision=${status.json?.revision}`)
-expect('revision 已升级到 v6', String(status.json?.revision || '').startsWith('v6'), status.json?.revision)
+// 版本号断言故意写成"形状"而不是写死某一代：写死过一次 v6，结果升级到 v7 后冒烟自己红了 ✗
+expect('revision 有值且形如 v<数字>', /^v\d/.test(String(status.json?.revision || '')), status.json?.revision)
 expect('带 qqTargets', Array.isArray(status.json?.qqTargets), JSON.stringify(status.json?.qqTargets))
 expect('带 sessionsIndexed', Number(status.json?.sessionsIndexed) > 0, String(status.json?.sessionsIndexed))
+
+console.log('\n=== GET /dev-task/panel（给人用的 HTML 面板）===')
+const panel = await callRoute(ctx.routes.get('/dev-task/panel'), { url: '/dev-task/panel' })
+expect('panel 200', panel.status === 200)
+expect('panel 是 HTML', /^<!doctype html>/i.test(panel.raw.trim()), panel.raw.slice(0, 24))
+expect('panel 含会话区标题与当前目标', panel.raw.includes('会话区') && panel.raw.includes('当前回传目标'))
+expect('panel 含至少一行会话 id', /session-[0-9a-f]{8}/.test(panel.raw))
 
 console.log('\n=== GET /dev-task/sessions（真实会话区）===')
 const sessions = await callRoute(ctx.routes.get('/dev-task/sessions'), { url: '/dev-task/sessions?limit=5&days=30' })
