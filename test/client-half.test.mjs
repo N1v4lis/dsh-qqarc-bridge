@@ -16,9 +16,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
-const clientPath = path.resolve(new URL('../lib/client.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))
+// ⚠️ 必须用 fileURLToPath：URL.pathname 是**百分号编码**的（路径里的空格会变成 %20），
+//    直接用它会得到一个不存在的路径 —— 这个坑今天已经踩过两次。
+const clientPath = fileURLToPath(clientUrl)
 const pkgUrl = new URL('../package.json', import.meta.url)
 
 /** 剥掉注释：注释里作为"反例"出现的 export/require 文字不该被判红 */
