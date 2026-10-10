@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.4] — 2026-10-10
+
+### 修复
+
+- **控件不出现的真正原因：取 slots 的方式错了。** 客户端自报给了决定性证据：
+  `{ event: "apply", registered: false, detail: "ctx.get(\"slots\") 拿不到 slots 服务", hasCtx: true }`
+  —— 模块加载了、apply 也执行了，只是 `ctx.get('slots')` 返回 undefined。
+  先例 dsh-memory-evolve 用的是**属性访问** `ctx.slots.inject(…)`（其 lib/client.js:18220）。
+  现改为 `ctx.slots` 优先、`ctx.get('slots')` 兜底。
+- 自报通道保留（`/dev-task/client-report`）：以后这类问题一条命令就能定位。
+
 ## [1.0.3] — 2026-10-10
 
 ### 变更（按用户要求换位置 + 修切会话不跟手）
