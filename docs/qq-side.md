@@ -30,6 +30,12 @@ DSH 侧的本插件只负责"把需求注入会话、把结果回传"，**QQ 那
   第 1 个号 → 8765   第 2 个 → 8865   第 3 个 → 8965 …
 ```
 
+> ⚠️ **注意"默认值"与"生效值"的区别**：`portOffset` 只在设置了环境变量 `QQ_AGENT_PROFILE`
+> 时才非零；而插件设置里的 `port` 是**显式值，会覆盖默认值** —— 本机实测两份配置
+> （`data/config.json` 与 `accounts/<uin>/config.json`）都写着 `"port": 8765`，
+> 所以进程里实际只有一个回传口。**真正的多账号部署必须给每个账号配不同的 `port`**
+> （否则第二个实例 `EADDRINUSE`，日志里只有一条告警，然后通知口静默失效、只剩文件轮询）。
+
 任务文件（**每个账号一份**）：
 
 | 形态 | 路径 |
@@ -144,3 +150,40 @@ curl.exe -s http://127.0.0.1:19387/dev-task/status    # DSH 侧：revision / def
 3. 握手文件存在，且 `sessionId` 指向一个**你会在 DSH 里开着的**会话；
 4. `GET /dev-task/qq` 里对应端口的 `ok:true`；
 5. 在群里发一条 `开发 说一句你好` → 群里应收到编号回执 → 完成后收到长图。
+
+---
+
+## 七、QQ 侧多账号的真实缺口（审计结论，部署前必读）
+
+下面是**逐行读 `dev-coding/index.js` 得到的**风险清单。结论：**QQ 侧目前只在"单账号"下成立**；
+想在同一进程里真跑两个 QQ 号，必须逐条处理（本插件 DSH 侧已经就绪，等这一半）。
+
+| # | 缺口 | 位置 / 表现 |
+|---|---|---|
+| 1 | **端口写死** | 配置里显式 `"port": 8765`（覆盖 `8765 + portOffset()`）；`DEFAULTS.port` 本身是**进程级常量**，无法按账号取值 → 第二个账号必然 `EADDRINUSE`，只打一条告警后**静默退化为仅文件轮询** |
+| 2 | **单一 WS 连接** | `let socket` 是模块级单例，`connection()` 只解析"当前 ALS/active 账号"的配置；模块加载即 `start()`（无 ALS）→ 只连一个号，另一个号的群消息永远收不到；多实例并存会互相踢连接 |
+| 3 | **回发客户端单例** | `onebot` 在首条消息时按"当时的账号配置"构造并永久缓存 → 后续 `sendText/sendImage` 可能用**另一个号的端点与令牌** |
+| 4 | **数据目录按账号解析失效** | `__qqaPluginDir()` 依赖 ALS，但轮询定时器 / `restoreInflight` / `notifyBridge` / HTTP 回调**都在没有 ALS 的裸回调里** → 恒回落 `data/dev-coding`（实测 `accounts/<uin>/plugins/dev-coding` 从未生成）。`traceDir()` 更是完全没有账号维度 |
+| 5 | **模块级状态不分片** | `inflight / seen / finished / roleCache / handledCommands / suppressArm / shotFails / chromePathCache / adoptedSessionId / traceFile / onebot / socket / server` 全是进程级；taskId 撞表时去重闸会把 A 号的回执"让给"B 号（图直接丢） |
+| 6 | **握手/定向是进程级单值** | `adoptedSessionId`、`bridgeFileMtimes`、`bridgeConfigFiles()` 都没有账号维度 → 两个号的需求会投进**同一个 DSH 会话**，结果图只发给"最后写握手文件的那个号" |
+| 7 | **热重载会重置模块状态** | `booted` 是模块内变量；重载后新模块直接 `start()`，首句 `disconnect()` 会按**无 ALS 时的配置**（active 账号）重连，期间所有内存状态清空 |
+| 8 | **资源互抢** | `chrome-profile` 共用同一 `user-data-dir`（两个号同时出图会抢 profile 锁）；`shotFails` 单例 → 一个号渲染失败会连带另一个号在 3 次后彻底停用长图 |
+
+**建议的修法（QQ 侧）**：把"账号"提升为一等参数 —— 端口/WS 连接/onebot 客户端/数据目录/握手槽位
+全部按 `uin` 分片（进程内一张 `Map<uin, …>`），定时器与 HTTP 回调显式带上账号上下文
+（而不是依赖 ALS），并给每个账号独立的 `chrome-profile`。
+
+---
+
+## 八、当前（本机）实况快照：QQ 侧收不到消息
+
+```text
+data/dev-coding-diag/dev-coding.log 尾部：
+  开发指令监听未连上（连接关闭），30s 后重试第 1850 次        （2026-10-10 19:29）
+
+data/dev-coding/tasks.json：19 条，全部 done，最后一条 2026-10-02 19:56
+```
+
+即：**自建 WS 长期连不上 → 群里发指令不会被接收**（此时只有 HTTP 通知口与文件轮询还活着，
+所以"DSH 侧主动投递"仍可用）。排查顺序：先看 `GET /dev/status` 的 `wsConnected`，
+再确认协议端（SnowLuma/QQ）在跑、令牌与端口对得上。
