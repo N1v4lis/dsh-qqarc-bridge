@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.1] — 2026-10-10
+
+### 修复（界面可用性优先）
+
+- **停用客户端半边**（`dsh.client` / `exports["./client"]` 从 package.json 移除）。
+  它连续两次让 DSH 的 web boot 失败：
+  1. ESM 形态 → `Uncaught SyntaxError: Unexpected token 'export'`（加载器按普通脚本执行它）；
+  2. 顶层 `const` → `Identifier 'BAR_ID' has already been declared`（加载器会在同一作用域重新求值）；
+  改成 IIFE + CommonJS 后语法错误消失，但加载器**仍然**报 `import failed`（不打印更细的原因）。
+  两个已装先例发布的都是**预构建产物**，推测加载器要的就是那种形态 —— 搞清楚之前不再动用户界面。
+- 宿主半边（7 条路由 + `dev_task_result` 工具 + 多 QQ 路由 + 会话区索引）不受影响，功能照旧；
+  会话区依然可以通过 `GET /dev-task/sessions`、`GET /dev-task/panel` 与 `npm run sessions` 使用。
+
+### 保留
+
+- `lib/client.js`（IIFE 形态）与 `tools/fix-client-iife.mjs`、`test/client-half.test.mjs` 都留在仓库里，
+  等改成预构建产物后再启用。
+
 本项目从「本机自用的一次性桥接」整理为可发布的 v1.0.0。
 版本号语义：`MAJOR.MINOR.PATCH`；插件内部另有 `REVISION`（形如 `v6-multiqq-sessions`），
 用于判断 **DSH 进程里跑的是哪一代代码**（改完插件必须重启 DSH 才会换模块代次）。

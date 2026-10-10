@@ -60,13 +60,14 @@ test('契约：客户端半边对 DOM 的写法是防御式的', () => {
   assert.ok(!/\brequire\s*\(/.test(codeOnly(src)), '不 require 任何东西（连 React 都不需要）')
 })
 
-test('契约：package.json 声明了客户端半边且指向 lib/client.js', () => {
+test('契约：客户端半边当前处于停用状态（界面可用性优先）', () => {
   const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'))
-  assert.equal(pkg.exports['./client'], './lib/client.js')
-  assert.equal(pkg.dsh?.client?.platform, 'web')
-  assert.deepEqual(pkg.dsh?.client?.inject, ['@deepseek-ai/dsh-client-runtime'], 'dsh.client.inject 写模块名（与先例一致），不是服务名')
-  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml', 'bundle patch 也要在（宿主半边靠它 insert）')
-  assert.equal(pkg.version, '1.0.0')
+  // 2026-10-10：连续两次 boot 事故后停用；重新启用前必须先搞清加载器要的形态（见 CHANGELOG 1.0.1）
+  assert.equal(pkg.dsh?.client, undefined, 'dsh.client 应为空（停用中）')
+  assert.equal(pkg.exports?.['./client'], undefined, 'exports["./client"] 应为空（停用中）')
+  assert.ok(fs.existsSync(clientPath), 'lib/client.js 仍应保留在仓库里')
+  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml', 'bundle patch 仍要在（宿主半边靠它 insert）')
+  assert.equal(pkg.version, '1.0.1')
   assert.ok(!pkg.private, '发布的包不能是 private')
 })
 
