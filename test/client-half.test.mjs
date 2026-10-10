@@ -1,42 +1,60 @@
 /**
  * 契约测试：客户端半边（lib/client.js）与 package.json 的声明。
  *
- * 为什么值得单独测：客户端半边跑在 DSH 的**客户端加载器**里 ——
- * 已装的两个先例（dsh-memory-evolve / dsh-theme-tarkov）的 lib/client.js 都是
- * **打包产物**（CJS 包装 + require），说明那条路要过构建。
- * 本插件故意走"零依赖 DOM 注入"，好让"改完重启就能用"成立。
- * 这些断言就是把这个决定**钉死**：谁哪天顺手加了 import，测试立刻红。
+ * 背景（2026-10-10 真实事故）：客户端半边曾写成 ESM（`export function apply`），
+ * 客户端加载器把它当**普通脚本**执行 → 控制台 `Uncaught SyntaxError: Unexpected token 'export'`
+ * → `web boot: 1 entry did not activate` → **整个界面起不来**。
+ * 教训：加载器给的是 CommonJS 环境（`module` / `exports` / `require`），不是 ESM ——
+ * 这也是两个已装先例（dsh-memory-evolve / dsh-theme-tarkov）都发布打包产物的原因。
+ *
+ * 所以下面两条断言就是"事故复现测试"，把这个形态钉死。
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { createRequire } from 'node:module'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
+const clientPath = path.resolve(new URL('../lib/client.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'))
 const pkgUrl = new URL('../package.json', import.meta.url)
 
-/** 剥掉注释：注释里出现 require('react') 这类"讲反例"的文字很正常，不该被判红 */
+/** 剥掉注释：注释里作为"反例"出现的 export/require 文字不该被判红 */
 function codeOnly(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
-test('契约：客户端半边零依赖（不得出现 import / require）', () => {
+test('契约：客户端半边必须是 CommonJS 形态（不得出现 export / import）', () => {
   const raw = fs.readFileSync(clientUrl, 'utf8')
   const src = codeOnly(raw)
-  const imports = src.match(/^\s*import\s.+$/gm) || []   // match 无匹配返回 null，不是 []
-  assert.deepEqual(imports, [], '客户端半边不能有顶层 import —— 加载器不保证解析外部依赖')
-  assert.ok(!/\brequire\s*\(/.test(src), '客户端半边不能有 require')
-  assert.ok(/export function apply\s*\(/.test(raw), '必须导出 apply')
-  assert.ok(/export const inject\s*=/.test(raw), '必须导出 inject（声明要用的客户端服务）')
-  assert.ok(raw.includes('conversation.input.dock'), '注释里要写清座位依据（为什么不用 slots）')
+  assert.deepEqual(src.match(/^\s*export\s.+$/gm) || [], [], '客户端半边不能有 export —— 加载器按普通脚本执行它')
+  assert.deepEqual(src.match(/^\s*import\s.+$/gm) || [], [], '客户端半边不能有 import')
+  assert.ok(/-__exports\.apply\s*=/.test(src) || /__exports\.apply\s*=/.test(src), '必须以 CommonJS 方式导出 apply')
+  assert.ok(/__exports\.inject\s*=/.test(src), '必须以 CommonJS 方式导出 inject')
+  assert.ok(raw.includes('conversation.input.dock'), '注释里要写清座位依据（为什么不用 slots.register）')
+  assert.ok(raw.includes('module') && raw.includes('exports'), '要对宿主注入的 module/exports 做兜底')
+})
+
+test('契约：客户端半边能被当作 CommonJS 脚本加载（事故复现测试）', () => {
+  // 本包是 "type": "module"，所以 .js 走 ESM 解析 —— 要模拟加载器那种 CJS 环境，
+  // 必须复制成 .cjs 再 require。ESM 写法会在这里直接抛语法错误。
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-client-')), 'client.cjs')
+  fs.copyFileSync(clientPath, tmp)
+  const require_ = createRequire(import.meta.url)
+  const mod = require_(tmp)
+  assert.equal(typeof mod.apply, 'function', 'apply 必须可调用')
+  assert.deepEqual(mod.inject, ['slots'])
 })
 
 test('契约：客户端半边对 DOM 的写法是防御式的', () => {
   const src = fs.readFileSync(clientUrl, 'utf8')
   assert.ok(/ANCHOR_SELECTORS/.test(src), '锚点必须走"候选选择器列表"，不能写死一个')
   assert.ok(/MutationObserver/.test(src) && /setInterval/.test(src), '要能等首屏 DOM 稳定后再挂')
-  assert.ok(/catch/.test(src), '任何异常都要吞掉：客户端半边不能影响宿主半边')
+  assert.ok(/catch/.test(src), '任何异常都要吞掉：客户端半边不能影响 boot 与宿主半边')
   assert.ok(/dispose/.test(src) && /ctx\.effect/.test(src), '要绑生命周期并自清')
+  assert.ok(!/\brequire\s*\(/.test(codeOnly(src)), '不 require 任何东西（连 React 都不需要）')
 })
 
 test('契约：package.json 声明了客户端半边且指向 lib/client.js', () => {
