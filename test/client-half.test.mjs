@@ -34,10 +34,10 @@ test('契约：客户端半边必须是 CommonJS 形态（不得出现 export / 
   const src = codeOnly(raw)
   assert.deepEqual(src.match(/^\s*export\s.+$/gm) || [], [], '客户端半边不能有 export —— 加载器按普通脚本执行它')
   assert.deepEqual(src.match(/^\s*import\s.+$/gm) || [], [], '客户端半边不能有 import')
-  assert.ok(/-__exports\.apply\s*=/.test(src) || /__exports\.apply\s*=/.test(src), '必须以 CommonJS 方式导出 apply')
-  assert.ok(/__exports\.inject\s*=/.test(src), '必须以 CommonJS 方式导出 inject')
+  assert.ok(/__host\.apply\s*=/.test(src), '必须以 CommonJS 方式导出 apply')
+  assert.ok(/__host\.inject\s*=/.test(src), '必须以 CommonJS 方式导出 inject')
   assert.ok(/CommonJS/.test(raw), '注释里要写清形态约束（CommonJS，不是 ESM）与那次 boot 事故')
-  assert.ok(raw.includes('module') && raw.includes('exports'), '要对宿主注入的 module/exports 做兜底')
+  assert.ok(/^\(function \(\) \{/m.test(raw), '整个文件必须包在 IIFE 里（顶层声明会在重复求值时撞车）')
 })
 
 test('契约：客户端半边能被当作 CommonJS 脚本加载（事故复现测试）', () => {
@@ -48,7 +48,7 @@ test('契约：客户端半边能被当作 CommonJS 脚本加载（事故复现�
   const require_ = createRequire(import.meta.url)
   const mod = require_(tmp)
   assert.equal(typeof mod.apply, 'function', 'apply 必须可调用')
-  assert.deepEqual(mod.inject, ['slots'])
+  assert.deepEqual(mod.inject, [])
 })
 
 test('契约：客户端半边对 DOM 的写法是防御式的', () => {
