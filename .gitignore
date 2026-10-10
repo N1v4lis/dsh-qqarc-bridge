@@ -1,0 +1,23 @@
+# 依赖与产物
+node_modules/
+*.tgz
+npm-debug.log*
+pnpm-debug.log*
+
+# 本机运行期文件（绝不该进仓库：含令牌、绝对路径、会话 id）
+*.bak
+*.bak-*
+.bridge-state/
+dev-task-bridge.json
+*.error.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 截图与临时产物
+*.png
+!docs/**/*.png
+_tmp/

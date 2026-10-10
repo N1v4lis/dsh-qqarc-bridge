@@ -1,0 +1,47 @@
+{
+  "name": "dsh-dev-task-bridge",
+  "version": "1.0.0",
+  "description": "DSH ⇄ QQ bridge: turn a chat message like「开发 加个签到」into a real DSH coding session, then send the rendered result back to the same chat as a long image (via the QQ Agent dev-coding plugin).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./sessions": "./lib/sessions.js"
+  },
+  "files": [
+    "lib",
+    "tools",
+    "docs",
+    "examples",
+    "test",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/sessions.test.mjs",
+    "smoke": "node tools/smoke-endpoints.mjs",
+    "sessions": "node tools/list-sessions.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "cordis-plugin",
+    "qq",
+    "onebot",
+    "bridge",
+    "agent",
+    "automation"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}

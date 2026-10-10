@@ -1,0 +1,10 @@
+# Bundle patch layer for dsh-dev-task-bridge.
+#
+# A bundle's patch is applied on top of the profile's entry list in
+# `dsh.profile.bundles` order; `insert` appends this plugin's loader entry.
+# `name` is the plugin module specifier (resolved from the profile's
+# node_modules, or as a bundle from the dsh installation first).
+- insert:
+    - id: dev-task-bridge
+      name: dsh-dev-task-bridge
+      disabled: false
