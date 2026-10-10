@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.6] — 2026-10-10
+
+### 修复（可见性）
+
+- 控件配色改用 DSH **官方主题令牌**（`--dsw-alias-label-primary/-secondary`、`--dsw-alias-bg-layer-1/-2`、
+  `--dsw-alias-border-l2`、`--dsw-alias-brand-primary`、`--dsw-alias-state-success/-warn-primary`），
+  每个都带兜底色：令牌缺失也不会掉回低对比度。
+  此前写死 `#e6e6e6` 文字 + 半透明灰底，在浅色主题下按钮文字几乎看不见。
+- 按钮/代码块加粗（`font-weight:600`）、加边框、加悬停态；主按钮用品牌色。
+
 ## [1.0.4] — 2026-10-10
 
 ### 修复
