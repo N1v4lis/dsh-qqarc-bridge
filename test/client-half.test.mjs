@@ -70,12 +70,15 @@ test('契约：在伪造的 __ModuleLoader__ 下真加载，且连续求值两�
   assert.equal(second.length, 1, '重复求值也要能成功注册')
 })
 
-test('契约：客户端半边对 DOM 的写法是防御式的', () => {
+test('契约：控件挂在会话头部座位，且渲染路径是防御式的', () => {
   const src = fs.readFileSync(clientUrl, 'utf8')
-  assert.ok(/conversation\.input\.dock/.test(src), '要注册到输入框上方的座位')
-  assert.ok(/ANCHOR_SELECTORS/.test(src), '要有 DOM 兜底锚点（候选列表，不写死一个）')
+  // 座位：与 dsh-memory-evolve 的「复制会话 id」同一个（其 lib/client.js:18235）
+  assert.ok(/conversation\.session\.header\.actions/.test(src), '要注册到会话头部动作区')
+  assert.ok(/require\('react'\)/.test(src), '用 React 渲染，props.sessionId 才能随会话切换更新')
   assert.ok(/catch/.test(src), '任何异常都要吞掉：客户端半边不能影响 boot')
   assert.ok(/ctx\.effect/.test(src), '要绑生命周期并自清')
+  // 反面约束：不允许再"自己插 DOM"（那会与座位渲染重复、且切会话不跟手）
+  assert.ok(!/ANCHOR_SELECTORS/.test(src), '不应再有 DOM 兜底注入的选择器表')
 })
 
 test('契约：package.json 声明了客户端半边', () => {
