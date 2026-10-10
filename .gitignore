@@ -21,3 +21,7 @@ Thumbs.db
 *.png
 !docs/**/*.png
 _tmp/
+
+# 补丁脚本留下的就地备份（不进仓库，也不进 npm 包）
+_backup/
+
