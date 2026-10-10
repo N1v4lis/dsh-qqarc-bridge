@@ -6,7 +6,9 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./sessions": "./lib/sessions.js"
+    "./sessions": "./lib/sessions.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "lib",
@@ -20,7 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/sessions.test.mjs",
+    "test": "node --test test/sessions.test.mjs test/client-half.test.mjs",
     "smoke": "node tools/smoke-endpoints.mjs",
     "sessions": "node tools/list-sessions.mjs"
   },
@@ -39,6 +41,12 @@
     "node": ">=20"
   },
   "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "slots"
+      ]
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
