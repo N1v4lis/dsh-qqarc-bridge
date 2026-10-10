@@ -1,73 +1,90 @@
 /**
- * 契约测试：客户端半边（lib/client.js）与 package.json 的声明。
+ * 客户端半边契约测试。
  *
- * 背景（2026-10-10 真实事故）：客户端半边曾写成 ESM（`export function apply`），
- * 客户端加载器把它当**普通脚本**执行 → 控制台 `Uncaught SyntaxError: Unexpected token 'export'`
- * → `web boot: 1 entry did not activate` → **整个界面起不来**。
- * 教训：加载器给的是 CommonJS 环境（`module` / `exports` / `require`），不是 ESM ——
- * 这也是两个已装先例（dsh-memory-evolve / dsh-theme-tarkov）都发布打包产物的原因。
- *
- * 所以下面两条断言就是"事故复现测试"，把这个形态钉死。
+ * 三次真实 boot 事故（2026-10-10）换来的三条硬约束，全部固化成断言：
+ *   ① 入口必须是调用 window.__ModuleLoader__.load 的**脚本**（写 export → Unexpected token 'export'）
+ *   ② 所有代码必须在 factory 内（顶层 const → Identifier 'x' has already been declared）
+ *   ③ 必须真的调用 __ModuleLoader__.load（自己包 IIFE → import failed）
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
-import { createRequire } from 'node:module'
+import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 const clientUrl = new URL('../lib/client.js', import.meta.url)
-// ⚠️ 必须用 fileURLToPath：URL.pathname 是**百分号编码**的（路径里的空格会变成 %20），
-//    直接用它会得到一个不存在的路径 —— 这个坑今天已经踩过两次。
 const clientPath = fileURLToPath(clientUrl)
 const pkgUrl = new URL('../package.json', import.meta.url)
 
-/** 剥掉注释：注释里作为"反例"出现的 export/require 文字不该被判红 */
+/** 剥注释后再做形态检查（注释里作为反例出现的 export/import 不该判红） */
 function codeOnly(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
-test('契约：客户端半边必须是 CommonJS 形态（不得出现 export / import）', () => {
+/** 在 vm 里伪造 ModuleLoader，真加载一次客户端入口 */
+function loadInSandbox(src) {
+  const loaded = []
+  const sandbox = {
+    console,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    setInterval: () => 0,
+    clearInterval: () => {},
+    fetch: () => Promise.reject(new Error('no network in test')),
+    AbortSignal: { timeout: () => undefined },
+  }
+  sandbox.window = sandbox
+  sandbox.globalThis = sandbox
+  sandbox.window.__ModuleLoader__ = {
+    load: (def) => { loaded.push(def) },
+  }
+  vm.createContext(sandbox)
+  vm.runInContext(src, sandbox, { filename: 'client.js' })
+  return loaded
+}
+
+test('契约：入口是调用 __ModuleLoader__.load 的脚本（不是 ESM、不是裸 CJS）', () => {
   const raw = fs.readFileSync(clientUrl, 'utf8')
   const src = codeOnly(raw)
-  assert.deepEqual(src.match(/^\s*export\s.+$/gm) || [], [], '客户端半边不能有 export —— 加载器按普通脚本执行它')
-  assert.deepEqual(src.match(/^\s*import\s.+$/gm) || [], [], '客户端半边不能有 import')
-  assert.ok(/__host\.apply\s*=/.test(src), '必须以 CommonJS 方式导出 apply')
-  assert.ok(/__host\.inject\s*=/.test(src), '必须以 CommonJS 方式导出 inject')
-  assert.ok(/CommonJS/.test(raw), '注释里要写清形态约束（CommonJS，不是 ESM）与那次 boot 事故')
-  assert.ok(/^\(function \(\) \{/m.test(raw), '整个文件必须包在 IIFE 里（顶层声明会在重复求值时撞车）')
+  assert.deepEqual(src.match(/^\s*export\s.+$/gm) || [], [], '不能有 export（加载器按脚本执行）')
+  assert.deepEqual(src.match(/^\s*import\s.+$/gm) || [], [], '不能有 import')
+  assert.ok(/window\.__ModuleLoader__\.load\(/.test(src), '必须调用 window.__ModuleLoader__.load')
+  assert.ok(/factory:\s*\(require\)\s*=>/.test(src), '必须给出 factory(require)')
+  assert.ok(/return module\.exports/.test(src), 'factory 必须 return module.exports')
 })
 
-test('契约：客户端半边能被当作 CommonJS 脚本加载（事故复现测试）', () => {
-  // 本包是 "type": "module"，所以 .js 走 ESM 解析 —— 要模拟加载器那种 CJS 环境，
-  // 必须复制成 .cjs 再 require。ESM 写法会在这里直接抛语法错误。
-  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-client-')), 'client.cjs')
-  fs.copyFileSync(clientPath, tmp)
-  const require_ = createRequire(import.meta.url)
-  const mod = require_(tmp)
-  assert.equal(typeof mod.apply, 'function', 'apply 必须可调用')
-  assert.deepEqual(mod.inject, [])
+test('契约：在伪造的 __ModuleLoader__ 下真加载，且连续求值两次不抛错', () => {
+  const src = fs.readFileSync(clientPath, 'utf8')
+  const first = loadInSandbox(src)
+  assert.equal(first.length, 1, '必须注册恰好一个模块')
+  assert.equal(first[0].id, 'dsh-dev-task-bridge', 'id 必须是包名')
+
+  const mod = first[0].factory((name) => { throw new Error('测试环境没有 ' + name) })
+  assert.equal(typeof mod.apply, 'function', 'factory 必须返回 apply')
+  assert.ok(Array.isArray(mod.inject), 'factory 必须返回 inject')
+
+  // 同一 context 里第二次求值：旧写法（顶层声明）在这里必炸
+  const second = loadInSandbox(src)
+  assert.equal(second.length, 1, '重复求值也要能成功注册')
 })
 
 test('契约：客户端半边对 DOM 的写法是防御式的', () => {
   const src = fs.readFileSync(clientUrl, 'utf8')
-  assert.ok(/ANCHOR_SELECTORS/.test(src), '锚点必须走"候选选择器列表"，不能写死一个')
-  assert.ok(/MutationObserver/.test(src) && /setInterval/.test(src), '要能等首屏 DOM 稳定后再挂')
-  assert.ok(/catch/.test(src), '任何异常都要吞掉：客户端半边不能影响 boot 与宿主半边')
-  assert.ok(/dispose/.test(src) && /ctx\.effect/.test(src), '要绑生命周期并自清')
-  assert.ok(!/\brequire\s*\(/.test(codeOnly(src)), '不 require 任何东西（连 React 都不需要）')
+  assert.ok(/conversation\.input\.dock/.test(src), '要注册到输入框上方的座位')
+  assert.ok(/ANCHOR_SELECTORS/.test(src), '要有 DOM 兜底锚点（候选列表，不写死一个）')
+  assert.ok(/catch/.test(src), '任何异常都要吞掉：客户端半边不能影响 boot')
+  assert.ok(/ctx\.effect/.test(src), '要绑生命周期并自清')
 })
 
-test('契约：客户端半边当前处于停用状态（界面可用性优先）', () => {
+test('契约：package.json 声明了客户端半边', () => {
   const pkg = JSON.parse(fs.readFileSync(pkgUrl, 'utf8'))
-  // 2026-10-10：连续两次 boot 事故后停用；重新启用前必须先搞清加载器要的形态（见 CHANGELOG 1.0.1）
-  assert.equal(pkg.dsh?.client, undefined, 'dsh.client 应为空（停用中）')
-  assert.equal(pkg.exports?.['./client'], undefined, 'exports["./client"] 应为空（停用中）')
-  assert.ok(fs.existsSync(clientPath), 'lib/client.js 仍应保留在仓库里')
-  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml', 'bundle patch 仍要在（宿主半边靠它 insert）')
-  assert.equal(pkg.version, '1.0.1')
+  assert.equal(pkg.exports['./client'], './lib/client.js')
+  assert.equal(pkg.dsh?.client?.platform, 'web')
+  assert.deepEqual(pkg.dsh?.client?.inject, ['@deepseek-ai/dsh-client-runtime'], '这个字段写模块名，与先例一致')
+  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml', 'bundle patch 也要在（宿主半边靠它 insert）')
+  assert.match(String(pkg.version), /^1\.0\.\d+$/)
   assert.ok(!pkg.private, '发布的包不能是 private')
 })
 

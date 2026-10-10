@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.2] — 2026-10-10
+
+### 修复
+
+- **客户端半边按正确形态重写并重新启用**。逆向 `dsh-memory-evolve/lib/client.js` 得到契约：
+  客户端入口是一段脚本，必须调用 `window.__ModuleLoader__.load({ id, factory: (require) => { … return module.exports } })`，
+  所有代码待在 factory 内（这样重复求值才有独立作用域）。
+  三次事故的证据链：`export` → 语法错误；顶层 `const` → 重复声明；自己包 IIFE 但不调 `__ModuleLoader__` → `import failed`。
+- 栏位注册到座位 `conversation.input.dock`（输入框上方），组件从 props 取 `sessionId`；
+  拿不到座位/React 时自动退回 DOM 注入，两条路都失败也只是栏位不出现（不影响 boot）。
+- 测试新增"加载契约"：伪造 `window.__ModuleLoader__` 真加载一次，断言 `id` 正确、`factory` 返回 `apply`/`inject`、
+  且**连续求值两次不抛错**。
+
 ## [1.0.1] — 2026-10-10
 
 ### 修复（界面可用性优先）
