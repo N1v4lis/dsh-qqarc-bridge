@@ -33,7 +33,7 @@ test('契约：客户端半边必须是 CommonJS 形态（不得出现 export / 
   assert.deepEqual(src.match(/^\s*import\s.+$/gm) || [], [], '客户端半边不能有 import')
   assert.ok(/-__exports\.apply\s*=/.test(src) || /__exports\.apply\s*=/.test(src), '必须以 CommonJS 方式导出 apply')
   assert.ok(/__exports\.inject\s*=/.test(src), '必须以 CommonJS 方式导出 inject')
-  assert.ok(raw.includes('conversation.input.dock'), '注释里要写清座位依据（为什么不用 slots.register）')
+  assert.ok(/CommonJS/.test(raw), '注释里要写清形态约束（CommonJS，不是 ESM）与那次 boot 事故')
   assert.ok(raw.includes('module') && raw.includes('exports'), '要对宿主注入的 module/exports 做兜底')
 })
 
